@@ -22,29 +22,10 @@ public class FilterTaskAuth extends OncePerRequestFilter {
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
             throws ServletException, IOException {
-        // Pegar a autenticação
-        var authorizationHeader = request.getHeader("Authorization");
-        var encodedAuth = authorizationHeader.substring("Basic".length()).trim();
-        byte[] decodedAuth = Base64.getDecoder().decode(encodedAuth);
-        var authString = new String(decodedAuth);
-
-        String[] credentials = authString.split(":");
-        String username = credentials[0];
-        String password = credentials[1];
-
-        // Validar usuário
-        var user = this.userRepository.findByUsername(username);
-
-        if (user == null) {
-            response.sendError(401);
+        if (authenticate(request)) {
+            filterChain.doFilter(request, response);
         } else {
-            // Validar a senha
-            var passwordVerify = BCrypt.verifyer().verify(password.toCharArray(), user.getPassword());
-            if (passwordVerify.verified) {
-                filterChain.doFilter(request, response);
-            } else {
-                response.sendError(401);
-            }
+            response.sendError(401);
         }
     }
 
@@ -53,15 +34,44 @@ public class FilterTaskAuth extends OncePerRequestFilter {
         String path = request.getRequestURI();
         String method = request.getMethod();
 
-        if (path.equals("/live/websocket") && method.equals("GET")) {
-            return true;
+        return (path.equals("/live/websocket") && method.equals("GET"))
+                || (path.equals("/users") && method.equals("POST"));
+    }
+
+    private String[] getCredentials(HttpServletRequest request) {
+        String authorizationHeader = request.getHeader("Authorization");
+        if (authorizationHeader == null || !authorizationHeader.startsWith("Basic")) {
+            return null;
         }
 
-        if (path.equals("/users") && method.equals("POST")) {
-            return true;
+        var encodedAuth = authorizationHeader.substring("Basic".length()).trim();
+        byte[] decodedAuth = Base64.getDecoder().decode(encodedAuth);
+        var authString = new String(decodedAuth);
+
+        return authString.split(":");
+    }
+
+    private boolean authenticate(HttpServletRequest request) {
+        var credentials = getCredentials(request);
+
+        if (credentials == null) {
+            return false;
         }
 
-        return false;
+        String username = credentials[0];
+        String password = credentials[1];
+
+        var user = userRepository.findByUsername(username);
+        if (user == null) {
+            return false;
+        }
+
+        var passwordVerify = BCrypt.verifyer().verify(password.toCharArray(), user.getPassword());
+        if (passwordVerify.verified) {
+            return true;
+        } else {
+            return false;
+        }
     }
 
 }
