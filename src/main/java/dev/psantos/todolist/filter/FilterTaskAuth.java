@@ -9,6 +9,7 @@ import org.springframework.web.filter.OncePerRequestFilter;
 
 import at.favre.lib.crypto.bcrypt.BCrypt;
 import dev.psantos.todolist.user.IUserRepository;
+import dev.psantos.todolist.user.UserModel;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -22,7 +23,9 @@ public class FilterTaskAuth extends OncePerRequestFilter {
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
             throws ServletException, IOException {
-        if (authenticate(request)) {
+        var user = authenticate(request);
+        if (user != null) {
+            request.setAttribute("userId", user.getId());
             filterChain.doFilter(request, response);
         } else {
             response.sendError(401);
@@ -51,11 +54,11 @@ public class FilterTaskAuth extends OncePerRequestFilter {
         return authString.split(":");
     }
 
-    private boolean authenticate(HttpServletRequest request) {
+    private UserModel authenticate(HttpServletRequest request) {
         var credentials = getCredentials(request);
 
         if (credentials == null) {
-            return false;
+            return null;
         }
 
         String username = credentials[0];
@@ -63,14 +66,14 @@ public class FilterTaskAuth extends OncePerRequestFilter {
 
         var user = userRepository.findByUsername(username);
         if (user == null) {
-            return false;
+            return null;
         }
 
         var passwordVerify = BCrypt.verifyer().verify(password.toCharArray(), user.getPassword());
         if (passwordVerify.verified) {
-            return true;
+            return user;
         } else {
-            return false;
+            return null;
         }
     }
 
